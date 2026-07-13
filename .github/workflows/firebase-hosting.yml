@@ -41,7 +41,33 @@ jobs:
           else
             rm -rf web/submissions/*
           fi
-          node -e "const fs=require('fs'); const path=require('path'); const root='web/submissions'; const out='web/submissions/index.json'; const entries=[]; function walk(dir,prefix=''){ for (const item of fs.readdirSync(dir,{withFileTypes:true})) { const rel = prefix ? `${prefix}/${item.name}` : item.name; entries.push({ name: item.name, path: rel, type: item.isDirectory() ? 'directory' : 'file' }); if (item.isDirectory()) walk(path.join(dir,item.name), rel); } } if (!fs.existsSync(root)) fs.mkdirSync(root,{recursive:true}); walk(root); fs.writeFileSync(out, JSON.stringify({entries}, null, 2));"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = 'web/submissions';
+          const out = 'web/submissions/index.json';
+          const entries = [];
+
+          function walk(dir, prefix = '') {
+            for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+              const rel = prefix ? `${prefix}/${item.name}` : item.name;
+              entries.push({
+                name: item.name,
+                path: rel,
+                type: item.isDirectory() ? 'directory' : 'file',
+              });
+              if (item.isDirectory()) {
+                walk(path.join(dir, item.name), rel);
+              }
+            }
+          }
+
+          if (!fs.existsSync(root)) {
+            fs.mkdirSync(root, { recursive: true });
+          }
+          walk(root);
+          fs.writeFileSync(out, JSON.stringify({ entries }, null, 2));
+          NODE
 
       - name: Analyze
         run: flutter analyze
