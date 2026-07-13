@@ -1,0 +1,104 @@
+name: Firebase Hosting CI/CD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: firebase-hosting-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Analyze, Test, Build Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build web
+        run: flutter build web --release
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web-build
+          path: build/web
+
+  deploy_preview:
+    name: Deploy PR Preview
+    needs: ci
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-web-build
+          path: build/web
+
+      - name: Point Firebase Hosting public directory to build/web
+        run: |
+          node -e "const fs=require('fs'); const cfg=JSON.parse(fs.readFileSync('firebase.json','utf8')); if (cfg.hosting && !Array.isArray(cfg.hosting)) { cfg.hosting.public='build/web'; } fs.writeFileSync('firebase.json', JSON.stringify(cfg, null, 2));"
+
+      - name: Deploy to Firebase Hosting preview channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FYPPROJECTHEALTH }}
+          projectId: fypprojecthealth
+
+  deploy_live:
+    name: Deploy Live
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-web-build
+          path: build/web
+
+      - name: Point Firebase Hosting public directory to build/web
+        run: |
+          node -e "const fs=require('fs'); const cfg=JSON.parse(fs.readFileSync('firebase.json','utf8')); if (cfg.hosting && !Array.isArray(cfg.hosting)) { cfg.hosting.public='build/web'; } fs.writeFileSync('firebase.json', JSON.stringify(cfg, null, 2));"
+
+      - name: Deploy to Firebase Hosting live channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FYPPROJECTHEALTH }}
+          channelId: live
+          projectId: fypprojecthealth
